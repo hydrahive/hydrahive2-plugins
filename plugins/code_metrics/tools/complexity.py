@@ -19,6 +19,9 @@ COMPLEXITY_PATTERNS = {
     },
 }
 
+# Excluded directories
+EXCLUDED_DIRS = {"node_modules", "__pycache__", "venv", ".venv", "dist", "build"}
+
 
 async def _analyze_file(path: Path, max_lines: int = 200) -> dict:
     """Analysiert eine Datei auf Complexity-Indikatoren."""
@@ -99,13 +102,14 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
     for ext in extensions:
         files.extend(root.glob(f"**/*{ext}"))
     
-    files = [f for f in set(files) if not any(
-        part.startswith(".") or part in {"node_modules", "__pycache__", "venv", ".venv", "dist", "build"}
-        for part in f.relative_to(root).parts
-    ))]
+    # Filter excluded dirs
+    filtered_files = []
+    for f in files:
+        rel_parts = f.relative_to(root).parts
+        if not any(part.startswith(".") or part in EXCLUDED_DIRS for part in rel_parts):
+            filtered_files.append(f)
     
-    # Limit for performance
-    files = files[:100]
+    files = filtered_files[:100]
     
     # Analyze concurrently
     results = await asyncio.gather(*[_analyze_file(f, max_lines) for f in files])
@@ -137,10 +141,6 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
             }
             for r in problematic
             if r["issue_count"] > 0
-        ],
-        "top_issues": [
-            {"type": t, "count": len(issues)[:20]}
-            for t, issues in sorted(issues_by_type.items(), key=lambda x: len(x[1]), reverse=True)
         ],
     })
 
