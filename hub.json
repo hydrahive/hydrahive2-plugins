@@ -26,6 +26,19 @@
         "analytics",
         "vcs"
       ]
+    },
+    {
+      "name": "code-metrics",
+      "version": "0.1.0",
+      "description": "Code-Analyse: Lines of Code, Sprachen, Complexity",
+      "author": "HydraHive Agent (Till)",
+      "path": "plugins/code_metrics",
+      "requires_core": ">=2.0.0",
+      "tags": [
+        "code",
+        "metrics",
+        "analysis"
+      ]
     }
   ]
 }
