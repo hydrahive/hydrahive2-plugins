@@ -5,7 +5,7 @@
     {
       "name": "hello-world",
       "version": "0.1.0",
-      "description": "Demo-Plugin: ein einfaches Echo-Tool als Referenz f\u00fcr Plugin-Autoren.",
+      "description": "Demo-Plugin: ein einfaches Echo-Tool als Referenz für Plugin-Autoren.",
       "author": "HydraHive",
       "path": "plugins/hello-world",
       "requires_core": ">=2.0.0",
@@ -52,6 +52,20 @@
         "grep",
         "files",
         "navigation"
+      ]
+    },
+    {
+      "name": "http-tester",
+      "version": "0.1.0",
+      "description": "API-Tests: HTTP Requests, JSON Vergleiche, Schema-Validierung",
+      "author": "HydraHive Agent (Till)",
+      "path": "plugins/http_tester",
+      "requires_core": ">=2.0.0",
+      "tags": [
+        "http",
+        "api",
+        "testing",
+        "json"
       ]
     }
   ]
