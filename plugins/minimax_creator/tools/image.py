@@ -1,109 +1,76 @@
 """image — Generiert Bilder mit MiniMax AI."""
 import asyncio
-import subprocess
 import json
-from pathlib import Path
 from datetime import datetime
 
 from hydrahive.tools.base import Tool, ToolContext, ToolResult
 
 
-OUTPUT_DIR = Path("/tmp/mmx_images")
-OUTPUT_DIR.mkdir(exist_ok=True)
+def _get_output_dir():
+    """Lazily create output directory only when needed."""
+    from pathlib import Path
+    d = Path("/tmp/mmx_images")
+    d.mkdir(exist_ok=True)
+    return d
 
 
 async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
     prompt = args.get("prompt", "")
-    size = args.get("size", "1:1")  # 1:1, 16:9, 9:16, 4:3
-    style = args.get("style", "natural")  # natural, anime, realistic
-    output = args.get("output", None)  # Optional custom path
+    size = args.get("size", "1:1")
+    output = args.get("output", None)
     
     if not prompt:
         return ToolResult.fail("prompt ist erforderlich")
     
-    # Parse size
-    size_map = {
-        "1:1": "1:1",
-        "16:9": "16:9",
-        "9:16": "9:16",
-        "4:3": "4:3",
-    }
+    size_map = {"1:1": "1:1", "16:9": "16:9", "9:16": "9:16", "4:3": "4:3"}
     size_arg = size_map.get(size, "1:1")
     
-    # Style argument
-    style_arg = "--style" if style == "anime" else None
+    if output:
+        filename = output
+    else:
+        out_dir = _get_output_dir()
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = str(out_dir / f"mmx_image_{timestamp}.jpg")
     
-    # Generate filename
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = output or f"mmx_image_{timestamp}.jpg"
-    
-    # Build command
-    cmd = ["mmx", "image", "generate", "--prompt", prompt, "--aspect", size_arg]
-    if style_arg:
-        cmd.append(style_arg)
-    cmd.extend(["--output", filename])
+    cmd = ["mmx", "image", "generate", "--prompt", prompt, "--aspect", size_arg, "--output", filename]
     
     try:
-        # Run mmx
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await proc.communicate()
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
         
-        result = stdout.decode() + stderr.decode()
-        
-        # Parse JSON output
+        # Nur stdout parsen (JSON kommt über stdout)
         try:
-            data = json.loads(result)
+            data = json.loads(stdout.decode())
             if data.get("base_resp", {}).get("status_code") == 0:
                 return ToolResult.ok({
                     "success": True,
                     "prompt": prompt,
                     "size": size_arg,
-                    "style": style,
                     "output_file": filename,
-                    "message": "Bild erfolgreich generiert!",
                 })
             else:
-                return ToolResult.fail(f"MiniMax Error: {result}")
+                return ToolResult.fail(f"MiniMax Error: {stdout.decode()}")
         except json.JSONDecodeError:
-            return ToolResult.ok({
-                "success": True,
-                "prompt": prompt,
-                "output": result,
-                "raw_output": result[:500],
-            })
+            return ToolResult.fail(f"Keine gültige JSON-Antwort: {stdout.decode()[:200]}")
             
+    except asyncio.TimeoutError:
+        return ToolResult.fail("Timeout nach 120s — Bild-Generierung zu langsam")
     except Exception as e:
         return ToolResult.fail(f"Bild-Generierung fehlgeschlagen: {str(e)}")
 
 
 TOOL = Tool(
     name="image",
-    description="Generiert Bilder mit MiniMax AI. Gibt einen Prompt ein und erhalte ein Bild.",
+    description="Generiert Bilder mit MiniMax AI.",
     schema={
         "type": "object",
         "properties": {
-            "prompt": {
-                "type": "string",
-                "description": "Beschreibung des zu generierenden Bildes",
-            },
-            "size": {
-                "type": "string",
-                "enum": ["1:1", "16:9", "9:16", "4:3"],
-                "description": "Seitenverhältnis (default: 1:1)",
-            },
-            "style": {
-                "type": "string",
-                "enum": ["natural", "anime", "realistic"],
-                "description": "Bildstil (default: natural)",
-            },
-            "output": {
-                "type": "string",
-                "description": "Optional: Ausgabedatei-Pfad",
-            },
+            "prompt": {"type": "string", "description": "Beschreibung des Bildes"},
+            "size": {"type": "string", "enum": ["1:1", "16:9", "9:16", "4:3"], "description": "Seitenverhältnis"},
         },
         "required": ["prompt"],
     },

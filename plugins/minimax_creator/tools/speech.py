@@ -1,37 +1,39 @@
 """speech — Text-to-Speech mit MiniMax AI."""
 import asyncio
-import subprocess
 import json
-from pathlib import Path
 from datetime import datetime
 
 from hydrahive.tools.base import Tool, ToolContext, ToolResult
 
 
-OUTPUT_DIR = Path("/tmp/mmx_speech")
-OUTPUT_DIR.mkdir(exist_ok=True)
+def _get_output_dir():
+    from pathlib import Path
+    d = Path("/tmp/mmx_speech")
+    d.mkdir(exist_ok=True)
+    return d
 
 
 async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
     text = args.get("text", "")
-    voice = args.get("voice", "female-young")  # voice ID
+    voice = args.get("voice", None)
     speed = args.get("speed", 1.0)
     output = args.get("output", None)
     
     if not text:
         return ToolResult.fail("text ist erforderlich")
     
-    # Generate filename
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = output or f"mmx_speech_{timestamp}.mp3"
+    if output:
+        filename = output
+    else:
+        out_dir = _get_output_dir()
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = str(out_dir / f"mmx_speech_{timestamp}.mp3")
     
-    # Build command
-    cmd = ["mmx", "speech", "synthesize", "--text", text]
+    cmd = ["mmx", "speech", "synthesize", "--text", text, "--output", filename]
     if voice:
         cmd.extend(["--voice", voice])
     if speed != 1.0:
         cmd.extend(["--speed", str(speed)])
-    cmd.extend(["--output", filename])
     
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -39,57 +41,37 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await proc.communicate()
-        
-        result = stdout.decode() + stderr.decode()
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
         
         try:
-            data = json.loads(result)
+            data = json.loads(stdout.decode())
             if data.get("base_resp", {}).get("status_code") == 0:
                 return ToolResult.ok({
                     "success": True,
                     "text": text[:100],
-                    "voice": voice,
-                    "speed": speed,
+                    "voice": voice or "default",
                     "output_file": filename,
-                    "message": "Sprache erfolgreich generiert!",
                 })
+            else:
+                return ToolResult.fail(f"MiniMax Error: {stdout.decode()}")
         except json.JSONDecodeError:
-            pass
-        
-        return ToolResult.ok({
-            "success": True,
-            "text": text[:100],
-            "voice": voice,
-            "output": result[:500],
-        })
+            return ToolResult.fail(f"Keine gültige JSON-Antwort: {stdout.decode()[:200]}")
             
+    except asyncio.TimeoutError:
+        return ToolResult.fail("Timeout nach 60s — Speech-Synthese zu langsam")
     except Exception as e:
         return ToolResult.fail(f"Speech-Synthese fehlgeschlagen: {str(e)}")
 
 
 TOOL = Tool(
     name="speech",
-    description="Text-to-Speech mit MiniMax AI. Wandelt Text in Sprache um.",
+    description="Text-to-Speech mit MiniMax AI.",
     schema={
         "type": "object",
         "properties": {
-            "text": {
-                "type": "string",
-                "description": "Text der gesprochen werden soll",
-            },
-            "voice": {
-                "type": "string",
-                "description": "Stimme (default: female-young)",
-            },
-            "speed": {
-                "type": "number",
-                "description": "Geschwindigkeit 0.5-2.0 (default: 1.0)",
-            },
-            "output": {
-                "type": "string",
-                "description": "Optional: Ausgabedatei-Pfad",
-            },
+            "text": {"type": "string", "description": "Text der gesprochen werden soll"},
+            "voice": {"type": "string", "description": "Stimme (optional)"},
+            "speed": {"type": "number", "description": "Geschwindigkeit 0.5-2.0"},
         },
         "required": ["text"],
     },
