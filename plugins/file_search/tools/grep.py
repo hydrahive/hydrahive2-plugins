@@ -6,11 +6,14 @@ from pathlib import Path
 from hydrahive.tools.base import Tool, ToolContext, ToolResult
 
 
+EXCLUDED_DIRS = {"node_modules", "__pycache__", "venv", ".venv", "node_modules"}
+
+
 async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
     path_arg = args.get("path", str(ctx.workspace))
     pattern = args.get("pattern", "")
     extensions = args.get("extensions", [])
-    case_sensitive = args.get("case_sensitive", False)
+    case_sensitive = args.get("case_sensitive", True)
     max_results = int(args.get("max_results", 100))
     context = int(args.get("context", 0))  # Lines around match
     
@@ -21,23 +24,24 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
     if not root.exists():
         return ToolResult.fail(f"Pfad existiert nicht: {root}")
     
-    # Build glob pattern
+    # Find files - handle extensions properly
+    files = []
     if extensions:
-        exts = "|".join(f"*.{e.strip('.')}" for e in extensions)
-        glob_pattern = f"**/{{{exts}}}"
+        for ext in extensions:
+            ext_clean = ext.strip(".")
+            files.extend(root.glob(f"**/*.{ext_clean}"))
     else:
-        glob_pattern = "**/*"
+        files.extend(root.glob("**/*"))
     
-    try:
-        files = [f for f in root.glob(glob_pattern) if f.is_file()]
-    except Exception as e:
-        return ToolResult.fail(f"Glob-Fehler: {e}")
-    
-    # Filter hidden dirs
-    files = [f for f in files if not any(
-        part.startswith(".") or part in {"node_modules", "__pycache__", "venv", ".venv", "node_modules"}
-        for part in f.relative_to(root).parts
-    )]
+    # Filter hidden dirs and non-files
+    filtered_files = []
+    for f in files:
+        if not f.is_file():
+            continue
+        rel_parts = f.relative_to(root).parts
+        if not any(part.startswith(".") or part in EXCLUDED_DIRS for part in rel_parts):
+            filtered_files.append(f)
+    files = list(set(filtered_files))  # Remove duplicates
     
     # Compile regex
     flags = 0 if case_sensitive else re.IGNORECASE
@@ -58,7 +62,6 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
                     match_info = {
                         "line": i,
                         "content": line[:200],  # Truncate long lines
-                        "file": str(path.relative_to(root)),
                     }
                     
                     # Add context lines
@@ -93,6 +96,7 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
     return ToolResult.ok({
         "path": str(root),
         "pattern": pattern,
+        "extensions": extensions or None,
         "files_searched": len(files),
         "files_with_matches": len(files_with_matches),
         "total_matches": total_matches,
@@ -122,7 +126,7 @@ TOOL = Tool(
             },
             "case_sensitive": {
                 "type": "boolean",
-                "description": "Groß-/Kleinschreibung ignorieren (default: true)",
+                "description": "Groß-/Kleinschreibung (default: true)",
             },
             "context": {
                 "type": "integer",
