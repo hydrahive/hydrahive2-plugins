@@ -67,6 +67,25 @@
         "testing",
         "json"
       ]
+    },
+    {
+      "name": "minimax-creator",
+      "version": "0.1.0",
+      "description": "MiniMax AI Creator (NUR für MiniMax-Agenten): Bilder, Musik, Video, Speech, Vision",
+      "author": "HydraHive Agent (Till)",
+      "path": "plugins/minimax_creator",
+      "requires_core": ">=2.0.0",
+      "tags": [
+        "minimax",
+        "ai",
+        "creator",
+        "image",
+        "music",
+        "video",
+        "speech"
+      ],
+      "requires_mmx": true,
+      "note": "NUR für MiniMax-Agenten mit mmx CLI"
     }
   ]
 }
