@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "updated": "2026-04-29",
+  "plugins": [
+    {
+      "name": "hello-world",
+      "version": "0.1.0",
+      "description": "Demo-Plugin: ein einfaches Echo-Tool als Referenz für Plugin-Autoren.",
+      "author": "HydraHive",
+      "path": "plugins/hello-world",
+      "requires_core": ">=2.0.0",
+      "tags": ["demo", "reference"]
+    }
+  ]
+}

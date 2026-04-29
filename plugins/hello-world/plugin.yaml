@@ -1,0 +1,8 @@
+name: hello-world
+version: 0.1.0
+description: Demo-Plugin — ein Echo-Tool als Referenz für Plugin-Autoren.
+author: HydraHive
+requires_core: ">=2.0.0"
+entry: __init__
+permissions:
+  - tools.register
