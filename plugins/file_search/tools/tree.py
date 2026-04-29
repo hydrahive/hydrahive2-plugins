@@ -4,22 +4,25 @@ from pathlib import Path
 from hydrahive.tools.base import Tool, ToolContext, ToolResult
 
 
+EXCLUDED_DEFAULTS = {"node_modules", "__pycache__", ".git", ".venv", "venv", "dist", "build", "target", ".idea", ".vscode"}
+
+
 async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
     path_arg = args.get("path", str(ctx.workspace))
     max_depth = int(args.get("max_depth", 3))
     show_files = args.get("show_files", True)
     extensions = args.get("extensions", [])
-    exclude = args.get("exclude", [])
+    exclude_list = args.get("exclude", [])
+    
+    # Convert to set
+    exclude = set(exclude_list) if exclude_list else set()
+    exclude.update(EXCLUDED_DEFAULTS)
     
     root = Path(path_arg).resolve()
     if not root.exists():
         return ToolResult.fail(f"Pfad existiert nicht: {root}")
     
-    # Default exclusions
-    exclude_defaults = {"node_modules", "__pycache__", ".git", ".venv", "venv", "dist", "build", "target", ".idea", ".vscode"}
-    exclude.update(exclude_defaults)
-    
-    def build_tree(path: Path, prefix: str = "", depth: int = 0) -> list[str]:
+    def build_tree(path: Path, prefix: str = "", depth: int = 0) -> list:
         """Rekursiv Verzeichnisbaum bauen."""
         if depth >= max_depth:
             return []
@@ -70,12 +73,17 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
     tree_lines = build_tree(root)
     
     # Stats
-    total_files = sum(1 for _ in root.rglob("*") if _.is_file() and not any(
-        p.startswith(".") or p in exclude_defaults for p in _.relative_to(root).parts
-    ))
-    total_dirs = sum(1 for _ in root.rglob("*") if _.is_dir() and not any(
-        p.startswith(".") or p in exclude_defaults for p in _.relative_to(root).parts
-    ))
+    total_files = 0
+    total_dirs = 0
+    for item in root.rglob("*"):
+        if item.is_dir():
+            rel_parts = item.relative_to(root).parts
+            if not any(p.startswith(".") or p in EXCLUDED_DEFAULTS for p in rel_parts):
+                total_dirs += 1
+        elif item.is_file():
+            rel_parts = item.relative_to(root).parts
+            if not any(p.startswith(".") or p in EXCLUDED_DEFAULTS for p in rel_parts):
+                total_files += 1
     
     return ToolResult.ok({
         "path": str(root),
