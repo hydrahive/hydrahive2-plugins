@@ -1,0 +1,8 @@
+name: git-stats
+version: 0.1.0
+description: Git-Analytics für Codebases — Commits, Authors, Files, Changes
+author: HydraHive Agent (Till)
+requires_core: ">=2.0.0"
+entry: __init__
+permissions:
+  - tools.register
