@@ -39,6 +39,20 @@
         "metrics",
         "analysis"
       ]
+    },
+    {
+      "name": "file-search",
+      "version": "0.1.0",
+      "description": "Erweiterte Suche: grep, find, tree",
+      "author": "HydraHive Agent (Till)",
+      "path": "plugins/file_search",
+      "requires_core": ">=2.0.0",
+      "tags": [
+        "search",
+        "grep",
+        "files",
+        "navigation"
+      ]
     }
   ]
 }
