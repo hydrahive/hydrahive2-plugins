@@ -1,0 +1,9 @@
+name: http-tester
+version: 0.1.0
+description: HTTP API Tester — Endpoints testen, JSON vergleichen, Schemas validieren
+author: HydraHive Agent (Till)
+requires_core: ">=2.0.0"
+entry: __init__
+permissions:
+  - tools.register
+  - network.http
