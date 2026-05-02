@@ -17,6 +17,17 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
     if not text:
         return ToolResult.fail("text ist erforderlich")
 
+    # Daily-Cap (deterministisch, gemeinsam mit /api/tts).
+    try:
+        from hydrahive.voice import _quota as tts_quota
+        allowed, used, cap = tts_quota.check_and_increment(ctx.user_id)
+        if not allowed:
+            return ToolResult.fail(
+                f"TTS-Tageslimit erreicht ({used}/{cap}). Reset um Mitternacht UTC."
+            )
+    except Exception as exc:
+        logger.warning("Quota-Check fehlgeschlagen, lasse durch: %s", exc)
+
     out_dir = ctx.workspace / "media" / "speech"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"speech_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp3"
