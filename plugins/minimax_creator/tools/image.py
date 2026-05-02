@@ -1,77 +1,68 @@
-"""image — Generiert Bilder mit MiniMax AI."""
+"""image — Generiert Bilder mit MiniMax AI via mmx-CLI."""
+from __future__ import annotations
+
 import asyncio
 import json
+import logging
 from datetime import datetime
+from pathlib import Path
 
 from hydrahive.tools.base import Tool, ToolContext, ToolResult
 
+logger = logging.getLogger(__name__)
 
-def _get_output_dir():
-    """Lazily create output directory only when needed."""
-    from pathlib import Path
-    d = Path("/tmp/mmx_images")
-    d.mkdir(exist_ok=True)
-    return d
+OUT_DIR = Path("/tmp/mmx_images")
 
 
 async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
-    prompt = args.get("prompt", "")
-    size = args.get("size", "1:1")
-    output = args.get("output", None)
-    
+    prompt = (args.get("prompt") or "").strip()
+    aspect = args.get("aspect_ratio") or "1:1"
     if not prompt:
         return ToolResult.fail("prompt ist erforderlich")
-    
-    size_map = {"1:1": "1:1", "16:9": "16:9", "9:16": "9:16", "4:3": "4:3"}
-    size_arg = size_map.get(size, "1:1")
-    
-    if output:
-        filename = output
-    else:
-        out_dir = _get_output_dir()
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = str(out_dir / f"mmx_image_{timestamp}.jpg")
-    
-    cmd = ["mmx", "image", "generate", "--prompt", prompt, "--aspect", size_arg, "--output", filename]
-    
+
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    prefix = f"img_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+    cmd = [
+        "mmx", "--output", "json", "--non-interactive",
+        "image", "generate",
+        "--prompt", prompt,
+        "--aspect-ratio", aspect,
+        "--out-dir", str(OUT_DIR),
+        "--out-prefix", prefix,
+    ]
     try:
         proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
-        
-        # Nur stdout parsen (JSON kommt über stdout)
-        try:
-            data = json.loads(stdout.decode())
-            if data.get("base_resp", {}).get("status_code") == 0:
-                return ToolResult.ok({
-                    "success": True,
-                    "prompt": prompt,
-                    "size": size_arg,
-                    "output_file": filename,
-                })
-            else:
-                return ToolResult.fail(f"MiniMax Error: {stdout.decode()}")
-        except json.JSONDecodeError:
-            return ToolResult.fail(f"Keine gültige JSON-Antwort: {stdout.decode()[:200]}")
-            
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=180)
     except asyncio.TimeoutError:
-        return ToolResult.fail("Timeout nach 120s — Bild-Generierung zu langsam")
-    except Exception as e:
-        return ToolResult.fail(f"Bild-Generierung fehlgeschlagen: {str(e)}")
+        return ToolResult.fail("Timeout (180s) bei Bild-Generierung")
+
+    out = stdout.decode().strip()
+    err = stderr.decode().strip()
+    if proc.returncode != 0:
+        return ToolResult.fail(f"mmx exit={proc.returncode}: {err or out}")
+
+    try:
+        data = json.loads(out)
+        saved = data.get("saved") or []
+    except json.JSONDecodeError:
+        return ToolResult.fail(f"mmx-Output kein JSON: {out[:200]}")
+
+    if not saved:
+        return ToolResult.fail(f"mmx hat keine Datei gespeichert. stderr: {err[:200]}")
+
+    path = saved[0] if Path(saved[0]).is_absolute() else str(OUT_DIR / saved[0])
+    return ToolResult.ok({"output_file": path, "all_files": saved, "prompt": prompt})
 
 
 _DESC = (
-    "Generiert ein Bild mit MiniMax AI und speichert es als JPG-Datei. "
-    "WICHTIG: Nach Erfolg MUSST du den absoluten Pfad aus `output_file` "
-    "wortwörtlich in deine Antwort an den User schreiben — die Chat-UI "
-    "rendert Bilder nur dann, wenn der absolute Pfad (z.B. "
-    "/tmp/mmx_images/mmx_image_20260502_092000.jpg) im Antwort-Text "
-    "vorkommt. Erfinde KEINE Pfade. Lies den Wert aus dem Tool-Result. "
-    "Versuche NIEMALS Bilder als Base64 anzuzeigen — die UI rendert "
-    "automatisch sobald der Pfad im Text steht."
+    "Generiert ein Bild mit MiniMax AI und gibt den absoluten Dateipfad "
+    "zurück. Speichert nach /tmp/mmx_images/. Das Frontend rendert das "
+    "Bild automatisch — du musst NICHTS extra tun, der Pfad aus output_file "
+    "wird vom UI direkt aus dem Tool-Result gelesen. Antworte dem User "
+    "einfach kurz dass das Bild da ist."
 )
 
 TOOL = Tool(
@@ -80,8 +71,11 @@ TOOL = Tool(
     schema={
         "type": "object",
         "properties": {
-            "prompt": {"type": "string", "description": "Beschreibung des Bildes"},
-            "size": {"type": "string", "enum": ["1:1", "16:9", "9:16", "4:3"], "description": "Seitenverhältnis"},
+            "prompt": {"type": "string", "description": "Bildbeschreibung"},
+            "aspect_ratio": {
+                "type": "string", "enum": ["1:1", "16:9", "9:16", "4:3", "3:4"],
+                "description": "Seitenverhältnis (default 1:1)",
+            },
         },
         "required": ["prompt"],
     },

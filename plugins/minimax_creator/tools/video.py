@@ -1,74 +1,52 @@
-"""video — Generiert Videos mit MiniMax AI."""
+"""video — Generiert Videos mit MiniMax AI via mmx-CLI (synchron)."""
+from __future__ import annotations
+
 import asyncio
-import json
+import logging
 from datetime import datetime
+from pathlib import Path
 
 from hydrahive.tools.base import Tool, ToolContext, ToolResult
 
+logger = logging.getLogger(__name__)
+
+OUT_DIR = Path("/tmp/mmx_videos")
+
 
 async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
-    prompt = args.get("prompt", "")
-    duration = args.get("duration", 5)
-    output = args.get("output", None)
-    
+    prompt = (args.get("prompt") or "").strip()
     if not prompt:
         return ToolResult.fail("prompt ist erforderlich")
-    
-    if output:
-        filename = output
-    else:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"/tmp/mmx_video_{timestamp}.mp4"
-    
-    cmd = ["mmx", "video", "generate", "--prompt", prompt, "--output", filename]
-    if duration:
-        cmd.extend(["--duration", str(duration)])
-    
+
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = OUT_DIR / f"video_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
+
+    cmd = ["mmx", "--non-interactive", "video", "generate",
+           "--prompt", prompt, "--download", str(out_path)]
+
     try:
         proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=300)
-        
-        try:
-            data = json.loads(stdout.decode())
-            task_id = data.get("task_id")
-            if task_id:
-                return ToolResult.ok({
-                    "success": True,
-                    "task_id": task_id,
-                    "prompt": prompt,
-                    "message": f"Video-Generierung gestartet. Task-ID: {task_id}",
-                })
-            elif data.get("base_resp", {}).get("status_code") == 0:
-                return ToolResult.ok({
-                    "success": True,
-                    "prompt": prompt,
-                    "output_file": filename,
-                })
-            else:
-                return ToolResult.fail(f"MiniMax Error: {stdout.decode()}")
-        except json.JSONDecodeError:
-            return ToolResult.fail(f"Keine gültige JSON-Antwort: {stdout.decode()[:200]}")
-            
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=600)
     except asyncio.TimeoutError:
-        return ToolResult.fail("Timeout nach 300s — Video-Generierung zu langsam")
-    except Exception as e:
-        return ToolResult.fail(f"Video-Generierung fehlgeschlagen: {str(e)}")
+        return ToolResult.fail("Timeout (600s) bei Video-Generierung — mmx ist evtl. noch dabei")
+
+    err = stderr.decode().strip()
+    if proc.returncode != 0:
+        return ToolResult.fail(f"mmx exit={proc.returncode}: {err or stdout.decode()[:200]}")
+
+    if not out_path.exists() or out_path.stat().st_size < 10_000:
+        return ToolResult.fail(f"Video-Datei fehlt/zu klein. stderr: {err[:200]}")
+
+    return ToolResult.ok({"output_file": str(out_path), "prompt": prompt})
 
 
 _DESC = (
-    "Generiert ein Video mit MiniMax AI und speichert es als MP4-Datei. "
-    "WICHTIG: Nach Erfolg MUSST du den absoluten Pfad aus `output_file` "
-    "wortwörtlich in deine Antwort an den User schreiben — die Chat-UI "
-    "rendert Video-Player nur dann, wenn der absolute Pfad (z.B. "
-    "/tmp/mmx_video_20260502_092000.mp4) im Antwort-Text vorkommt. "
-    "Erfinde KEINE Pfade. Lies den Wert aus dem Tool-Result. Wenn nur "
-    "eine task_id zurückkommt, läuft die Generierung asynchron — informiere "
-    "den User und biete an später per `mmx video task get / download` "
-    "(via shell_exec) zu pollen."
+    "Generiert ein Video mit MiniMax AI (Hailuo, ~10s, kann 1-5 Min "
+    "dauern) und gibt den absoluten MP4-Pfad zurück. Speichert nach "
+    "/tmp/mmx_videos/. Das Frontend rendert den Video-Player automatisch "
+    "aus dem Tool-Result. Antworte dem User einfach kurz."
 )
 
 TOOL = Tool(
@@ -77,8 +55,7 @@ TOOL = Tool(
     schema={
         "type": "object",
         "properties": {
-            "prompt": {"type": "string", "description": "Szene-Beschreibung"},
-            "duration": {"type": "integer", "description": "Dauer in Sekunden"},
+            "prompt": {"type": "string", "description": "Szenenbeschreibung"},
         },
         "required": ["prompt"],
     },
