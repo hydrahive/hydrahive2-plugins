@@ -4,13 +4,10 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime
-from pathlib import Path
 
 from hydrahive.tools.base import Tool, ToolContext, ToolResult
 
 logger = logging.getLogger(__name__)
-
-OUT_DIR = Path("/tmp/mmx_speech")
 
 
 async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
@@ -20,8 +17,9 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
     if not text:
         return ToolResult.fail("text ist erforderlich")
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = OUT_DIR / f"speech_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp3"
+    out_dir = ctx.workspace / "media" / "speech"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"speech_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp3"
 
     cmd = ["mmx", "--non-interactive", "speech", "synthesize",
            "--text", text, "--out", str(out_path)]
@@ -50,9 +48,8 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
 
 _DESC = (
     "Text-to-Speech mit MiniMax AI — gibt den absoluten Pfad zur MP3 "
-    "zurück. Speichert nach /tmp/mmx_speech/. Das Frontend rendert den "
-    "Audio-Player automatisch aus dem Tool-Result. Antworte dem User "
-    "einfach kurz dass die Sprachausgabe da ist."
+    "zurück. Speichert in den Workspace unter media/speech/. Das Frontend "
+    "rendert den Audio-Player automatisch aus dem Tool-Result."
 )
 
 TOOL = Tool(

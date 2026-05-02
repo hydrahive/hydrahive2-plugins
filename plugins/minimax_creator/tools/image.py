@@ -5,13 +5,10 @@ import asyncio
 import json
 import logging
 from datetime import datetime
-from pathlib import Path
 
 from hydrahive.tools.base import Tool, ToolContext, ToolResult
 
 logger = logging.getLogger(__name__)
-
-OUT_DIR = Path("/tmp/mmx_images")
 
 
 async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
@@ -20,7 +17,8 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
     if not prompt:
         return ToolResult.fail("prompt ist erforderlich")
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_dir = ctx.workspace / "media" / "images"
+    out_dir.mkdir(parents=True, exist_ok=True)
     prefix = f"img_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
     cmd = [
@@ -28,7 +26,7 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
         "image", "generate",
         "--prompt", prompt,
         "--aspect-ratio", aspect,
-        "--out-dir", str(OUT_DIR),
+        "--out-dir", str(out_dir),
         "--out-prefix", prefix,
     ]
     try:
@@ -53,15 +51,15 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
     if not saved:
         return ToolResult.fail(f"mmx hat keine Datei gespeichert. stderr: {err[:200]}")
 
-    path = saved[0] if Path(saved[0]).is_absolute() else str(OUT_DIR / saved[0])
+    from pathlib import Path
+    path = saved[0] if Path(saved[0]).is_absolute() else str(out_dir / saved[0])
     return ToolResult.ok({"output_file": path, "all_files": saved, "prompt": prompt})
 
 
 _DESC = (
     "Generiert ein Bild mit MiniMax AI und gibt den absoluten Dateipfad "
-    "zurück. Speichert nach /tmp/mmx_images/. Das Frontend rendert das "
-    "Bild automatisch — du musst NICHTS extra tun, der Pfad aus output_file "
-    "wird vom UI direkt aus dem Tool-Result gelesen. Antworte dem User "
+    "zurück. Speichert in den Workspace unter media/images/. Das Frontend "
+    "rendert das Bild automatisch aus dem Tool-Result. Antworte dem User "
     "einfach kurz dass das Bild da ist."
 )
 

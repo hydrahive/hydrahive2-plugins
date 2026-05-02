@@ -4,13 +4,10 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime
-from pathlib import Path
 
 from hydrahive.tools.base import Tool, ToolContext, ToolResult
 
 logger = logging.getLogger(__name__)
-
-OUT_DIR = Path("/tmp/mmx_videos")
 
 
 async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
@@ -18,8 +15,9 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
     if not prompt:
         return ToolResult.fail("prompt ist erforderlich")
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = OUT_DIR / f"video_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
+    out_dir = ctx.workspace / "media" / "videos"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"video_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
 
     cmd = ["mmx", "--non-interactive", "video", "generate",
            "--prompt", prompt, "--download", str(out_path)]
@@ -44,9 +42,9 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
 
 _DESC = (
     "Generiert ein Video mit MiniMax AI (Hailuo, ~10s, kann 1-5 Min "
-    "dauern) und gibt den absoluten MP4-Pfad zurück. Speichert nach "
-    "/tmp/mmx_videos/. Das Frontend rendert den Video-Player automatisch "
-    "aus dem Tool-Result. Antworte dem User einfach kurz."
+    "dauern) und gibt den absoluten MP4-Pfad zurück. Speichert in den "
+    "Workspace unter media/videos/. Das Frontend rendert den Video-Player "
+    "automatisch aus dem Tool-Result."
 )
 
 TOOL = Tool(
