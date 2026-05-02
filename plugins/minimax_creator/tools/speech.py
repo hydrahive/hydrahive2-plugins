@@ -63,9 +63,18 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
         return ToolResult.fail(f"Speech-Synthese fehlgeschlagen: {str(e)}")
 
 
+_DESC = (
+    "Text-to-Speech mit MiniMax AI — speichert das Ergebnis als MP3-Datei. "
+    "WICHTIG: Nach Erfolg MUSST du den absoluten Pfad aus `output_file` "
+    "wortwörtlich in deine Antwort an den User schreiben — die Chat-UI "
+    "rendert Audio-Player nur dann, wenn der absolute Pfad (z.B. "
+    "/tmp/mmx_speech/mmx_speech_20260502_092000.mp3) im Antwort-Text "
+    "vorkommt. Erfinde KEINE Pfade. Lies den Wert aus dem Tool-Result."
+)
+
 TOOL = Tool(
     name="speech",
-    description="Text-to-Speech mit MiniMax AI.",
+    description=_DESC,
     schema={
         "type": "object",
         "properties": {

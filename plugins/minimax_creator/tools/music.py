@@ -60,9 +60,18 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
         return ToolResult.fail(f"Musik-Generierung fehlgeschlagen: {str(e)}")
 
 
+_DESC = (
+    "Generiert Musik mit MiniMax AI und speichert sie als MP3-Datei. "
+    "WICHTIG: Nach Erfolg MUSST du den absoluten Pfad aus `output_file` "
+    "wortwörtlich in deine Antwort an den User schreiben — die Chat-UI "
+    "rendert Audio-Player nur dann, wenn der absolute Pfad (z.B. "
+    "/tmp/mmx_music/mmx_music_20260502_092000.mp3) im Antwort-Text "
+    "vorkommt. Erfinde KEINE Pfade. Lies den Wert aus dem Tool-Result."
+)
+
 TOOL = Tool(
     name="music",
-    description="Generiert Musik mit MiniMax AI.",
+    description=_DESC,
     schema={
         "type": "object",
         "properties": {

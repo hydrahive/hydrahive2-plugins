@@ -59,9 +59,21 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
         return ToolResult.fail(f"Video-Generierung fehlgeschlagen: {str(e)}")
 
 
+_DESC = (
+    "Generiert ein Video mit MiniMax AI und speichert es als MP4-Datei. "
+    "WICHTIG: Nach Erfolg MUSST du den absoluten Pfad aus `output_file` "
+    "wortwörtlich in deine Antwort an den User schreiben — die Chat-UI "
+    "rendert Video-Player nur dann, wenn der absolute Pfad (z.B. "
+    "/tmp/mmx_video_20260502_092000.mp4) im Antwort-Text vorkommt. "
+    "Erfinde KEINE Pfade. Lies den Wert aus dem Tool-Result. Wenn nur "
+    "eine task_id zurückkommt, läuft die Generierung asynchron — informiere "
+    "den User und biete an später per `mmx video task get / download` "
+    "(via shell_exec) zu pollen."
+)
+
 TOOL = Tool(
     name="video",
-    description="Generiert Videos mit MiniMax AI.",
+    description=_DESC,
     schema={
         "type": "object",
         "properties": {

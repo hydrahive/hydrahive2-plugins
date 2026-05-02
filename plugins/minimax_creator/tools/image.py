@@ -63,9 +63,20 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
         return ToolResult.fail(f"Bild-Generierung fehlgeschlagen: {str(e)}")
 
 
+_DESC = (
+    "Generiert ein Bild mit MiniMax AI und speichert es als JPG-Datei. "
+    "WICHTIG: Nach Erfolg MUSST du den absoluten Pfad aus `output_file` "
+    "wortwörtlich in deine Antwort an den User schreiben — die Chat-UI "
+    "rendert Bilder nur dann, wenn der absolute Pfad (z.B. "
+    "/tmp/mmx_images/mmx_image_20260502_092000.jpg) im Antwort-Text "
+    "vorkommt. Erfinde KEINE Pfade. Lies den Wert aus dem Tool-Result. "
+    "Versuche NIEMALS Bilder als Base64 anzuzeigen — die UI rendert "
+    "automatisch sobald der Pfad im Text steht."
+)
+
 TOOL = Tool(
     name="image",
-    description="Generiert Bilder mit MiniMax AI.",
+    description=_DESC,
     schema={
         "type": "object",
         "properties": {
