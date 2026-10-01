@@ -3,6 +3,7 @@ import asyncio
 from pathlib import Path
 from collections import defaultdict
 
+from hydrahive.tools._path import PathOutsideWorkspace, safe_path
 from hydrahive.tools.base import Tool, ToolContext, ToolResult
 
 
@@ -50,7 +51,13 @@ async def _count_file(path: Path) -> tuple[str, int]:
 async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
     path_arg = args.get("path", str(ctx.workspace))
     
-    root = Path(path_arg).resolve()
+    try:
+    
+        root = safe_path(ctx.workspace, path_arg)
+    
+    except PathOutsideWorkspace as e:
+    
+        return ToolResult.fail(str(e))
     if not root.exists():
         return ToolResult.fail(f"Pfad existiert nicht: {root}")
     

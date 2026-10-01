@@ -1,6 +1,7 @@
 """tree — Zeigt Verzeichnis-Struktur als Baum."""
 from pathlib import Path
 
+from hydrahive.tools._path import PathOutsideWorkspace, safe_path
 from hydrahive.tools.base import Tool, ToolContext, ToolResult
 
 
@@ -18,7 +19,13 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
     exclude = set(exclude_list) if exclude_list else set()
     exclude.update(EXCLUDED_DEFAULTS)
     
-    root = Path(path_arg).resolve()
+    try:
+    
+        root = safe_path(ctx.workspace, path_arg)
+    
+    except PathOutsideWorkspace as e:
+    
+        return ToolResult.fail(str(e))
     if not root.exists():
         return ToolResult.fail(f"Pfad existiert nicht: {root}")
     

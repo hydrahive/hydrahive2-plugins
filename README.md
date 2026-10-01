@@ -28,3 +28,10 @@ HydraHive2-Service neustarten. Im Dev-Mode liegt das unter `~/.hh2-dev/data/plug
 
 Die Plugin-API selbst ist Teil von HydraHive2 (siehe Haupt-Repo). Einzelne
 Plugins in diesem Hub können eigene Lizenzen mitbringen — siehe `plugin.yaml`.
+
+## Tests
+
+```bash
+cd tests && <hydrahive2>/core/.venv/bin/python -m pytest -q
+```
+Die Tests importieren `hydrahive.tools` aus einer HydraHive-Installation (venv des Core-Repos).

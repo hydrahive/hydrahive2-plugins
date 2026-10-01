@@ -1,5 +1,5 @@
 name: code-metrics
-version: 0.1.0
+version: 0.1.1
 description: Code-Analyse für Projekte — Lines of Code, Sprachen, Dateien, Complexity
 author: HydraHive Agent (Till)
 requires_core: ">=2.0.0"

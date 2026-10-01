@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 from collections import defaultdict
 
+from hydrahive.tools._path import PathOutsideWorkspace, safe_path
 from hydrahive.tools.base import Tool, ToolContext, ToolResult
 
 
@@ -93,7 +94,13 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
     extensions = args.get("extensions", [".py"])
     max_lines = int(args.get("max_lines", 200))
     
-    root = Path(path_arg).resolve()
+    try:
+    
+        root = safe_path(ctx.workspace, path_arg)
+    
+    except PathOutsideWorkspace as e:
+    
+        return ToolResult.fail(str(e))
     if not root.exists():
         return ToolResult.fail(f"Pfad existiert nicht: {root}")
     
