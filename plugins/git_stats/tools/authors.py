@@ -1,14 +1,20 @@
 """git_authors — Zeigt alle Autoren mit Commit-Count eines Git-Repos."""
 import asyncio
-from pathlib import Path
 
+from hydrahive.tools._path import PathOutsideWorkspace, safe_path
 from hydrahive.tools.base import Tool, ToolContext, ToolResult
 
 
 async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
     path = args.get("path", str(ctx.workspace))
     
-    repo = Path(path).resolve()
+    try:
+    
+        repo = safe_path(ctx.workspace, path)
+    
+    except PathOutsideWorkspace as e:
+    
+        return ToolResult.fail(str(e))
     if not (repo / ".git").exists():
         return ToolResult.fail(f"Kein Git-Repo gefunden in: {repo}")
     

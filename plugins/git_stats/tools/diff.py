@@ -1,7 +1,7 @@
 """git_diff — Zeigt Diff zwischen Commits oder Branches."""
 import asyncio
-from pathlib import Path
 
+from hydrahive.tools._path import PathOutsideWorkspace, safe_path
 from hydrahive.tools.base import Tool, ToolContext, ToolResult
 
 
@@ -10,7 +10,13 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
     ref = args.get("ref", "HEAD")
     file_filter = args.get("file", "")
     
-    repo = Path(path).resolve()
+    try:
+    
+        repo = safe_path(ctx.workspace, path)
+    
+    except PathOutsideWorkspace as e:
+    
+        return ToolResult.fail(str(e))
     if not (repo / ".git").exists():
         return ToolResult.fail(f"Kein Git-Repo gefunden in: {repo}")
     

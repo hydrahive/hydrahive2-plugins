@@ -16,7 +16,7 @@
     },
     {
       "name": "git-stats",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "Git-Analytics: Commits, Authors, Files, Diff",
       "author": "HydraHive Agent (Till)",
       "path": "plugins/git_stats",
@@ -29,7 +29,7 @@
     },
     {
       "name": "code-metrics",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "Code-Analyse: Lines of Code, Sprachen, Complexity",
       "author": "HydraHive Agent (Till)",
       "path": "plugins/code_metrics",
@@ -42,7 +42,7 @@
     },
     {
       "name": "file-search",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "Erweiterte Suche: grep, find, tree",
       "author": "HydraHive Agent (Till)",
       "path": "plugins/file_search",

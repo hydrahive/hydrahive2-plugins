@@ -1,6 +1,6 @@
 """find — Findet Dateien nach Name-Pattern."""
-from pathlib import Path
 
+from hydrahive.tools._path import PathOutsideWorkspace, safe_path
 from hydrahive.tools.base import Tool, ToolContext, ToolResult
 
 
@@ -15,7 +15,13 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
     if not name and not pattern:
         return ToolResult.fail("Entweder 'name' oder 'pattern' ist erforderlich")
     
-    root = Path(path_arg).resolve()
+    try:
+    
+        root = safe_path(ctx.workspace, path_arg)
+    
+    except PathOutsideWorkspace as e:
+    
+        return ToolResult.fail(str(e))
     if not root.exists():
         return ToolResult.fail(f"Pfad existiert nicht: {root}")
     
