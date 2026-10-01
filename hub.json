@@ -56,7 +56,7 @@
     },
     {
       "name": "http-tester",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "API-Tests: HTTP Requests, JSON Vergleiche, Schema-Validierung",
       "author": "HydraHive Agent (Till)",
       "path": "plugins/http_tester",
