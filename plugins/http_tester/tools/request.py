@@ -1,103 +1,102 @@
-"""request — HTTP Request Tool für HydraHive2."""
-import asyncio
+"""request — HTTP Request Tool für HydraHive2.
+
+Nutzt den zentralen SSRF-Schutz des Core (hydrahive.net.ssrf.safe_async_client,
+wie fetch_url): nur http/https, keine internen/privaten Ziele, geprüfte IP
+wird angepinnt (kein DNS-Rebinding), Weiterleitungen werden nicht verfolgt.
+Vorher lief das Werkzeug über ein externes Kommandozeilenprogramm ohne jede
+Prüfung (Task 3bd963b2 d, 01.10.2026) — localhost, LAN, Cloud-Metadaten und
+file:// waren erreichbar.
+"""
 import json
 import time
-from urllib.parse import urlparse
 
+import httpx
+from hydrahive.net.ssrf import SsrfBlocked, safe_async_client
 from hydrahive.tools.base import Tool, ToolContext, ToolResult
+
+_MAX_BYTES = 200_000
+_MAX_TIMEOUT = 60
+_METHODS = {"GET", "POST", "PUT", "DELETE", "PATCH"}
+
+
+def _clean_headers(raw) -> dict[str, str]:
+    out = {"Content-Type": "application/json"}
+    if not isinstance(raw, dict):
+        return out
+    for k, v in raw.items():
+        if str(k).lower() == "host":  # Host-Header gehört dem Pinning
+            continue
+        out[str(k)] = str(v)
+    return out
 
 
 async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
-    url = args.get("url", "")
-    method = args.get("method", "GET").upper()
-    headers = args.get("headers", {})
-    body = args.get("body", None)
-    timeout = int(args.get("timeout", 10))
-    
+    url = (args.get("url") or "").strip()
+    method = str(args.get("method") or "GET").upper()
+    body = args.get("body")
+    try:
+        timeout = max(1, min(int(args.get("timeout", 10)), _MAX_TIMEOUT))
+    except (TypeError, ValueError):
+        timeout = 10
+
     if not url:
         return ToolResult.fail("URL ist erforderlich")
-    
-    # Basic URL validation
-    try:
-        parsed = urlparse(url)
-        if not parsed.scheme:
-            return ToolResult.fail("Ungültige URL: fehlendes Protokoll (http/https)")
-    except Exception as e:
-        return ToolResult.fail(f"Ungültige URL: {e}")
-    
+    if method not in _METHODS:
+        return ToolResult.fail(f"Methode {method} nicht erlaubt")
+
     start_time = time.time()
-    
     try:
-        # Use asyncio subprocess for curl (more reliable than aiohttp)
-        cmd = ["curl", "-s", "-w", "\n%{http_code}|%{time_total}", 
-               "-X", method, "-H", f"Content-Type: application/json"]
-        
-        for k, v in headers.items():
-            cmd.extend(["-H", f"{k}: {v}"])
-        
-        if body:
-            cmd.extend(["-d", json.dumps(body)])
-        
-        cmd.append(url)
-        
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-        elapsed = time.time() - start_time
-        
-        output = stdout.decode().strip()
-        
-        # Parse response and status code
-        if "|" in output:
-            response_body, status_info = output.rsplit("|", 1)
-            status_code = status_info.split("|")[0] if "|" in status_info else "000"
-            time_total = float(status_info.split("|")[1]) if "|" in status_info else elapsed
-        else:
-            response_body = output
-            status_code = "000"
-        
-        # Try to parse JSON
-        json_body = None
-        try:
-            json_body = json.loads(response_body) if response_body else None
-        except json.JSONDecodeError:
-            pass
-        
-        return ToolResult.ok({
-            "url": url,
-            "method": method,
-            "status_code": int(status_code) if status_code.isdigit() else 0,
-            "elapsed_ms": round(elapsed * 1000, 2),
-            "time_total_s": round(elapsed, 3),
-            "body": json_body if json_body is not None else response_body,
-            "body_raw": response_body[:1000] if response_body else "",
-            "success": 200 <= int(status_code) < 300 if status_code.isdigit() else False,
-            "error": stderr.decode() if stderr else None,
-        })
-        
-    except asyncio.TimeoutError:
+        async with safe_async_client(url, timeout=timeout) as client:
+            r = await client.request(
+                method, url, headers=_clean_headers(args.get("headers")),
+                content=json.dumps(body).encode("utf-8") if body else None,
+            )
+    except SsrfBlocked as e:
+        if str(e) == "scheme_not_allowed":
+            return ToolResult.fail("Protokoll nicht erlaubt (nur http/https)")
+        return ToolResult.fail(f"Zugriff auf interne/private Adressen gesperrt ({e})")
+    except httpx.TimeoutException:
         return ToolResult.fail(f"Timeout nach {timeout}s")
-    except Exception as e:
-        return ToolResult.fail(f"Request fehlgeschlagen: {str(e)}")
+    except httpx.HTTPError as e:
+        return ToolResult.fail(f"Request fehlgeschlagen: {e}")
+
+    elapsed = time.time() - start_time
+    raw = r.content[:_MAX_BYTES].decode("utf-8", errors="replace")
+    try:
+        json_body = json.loads(raw) if raw else None
+    except json.JSONDecodeError:
+        json_body = None
+    return ToolResult.ok({
+        "url": url,
+        "method": method,
+        "status_code": r.status_code,
+        "elapsed_ms": round(elapsed * 1000, 2),
+        "time_total_s": round(elapsed, 3),
+        "body": json_body if json_body is not None else raw,
+        "body_raw": raw[:1000],
+        "success": 200 <= r.status_code < 300,
+        "truncated": len(r.content) > _MAX_BYTES,
+        "redirect_to": r.headers.get("location") if r.is_redirect else None,
+    })
 
 
 TOOL = Tool(
     name="request",
-    description="Führt HTTP Request aus (GET/POST/PUT/DELETE). Gibt Status, Response-Body und Zeit zurück.",
+    description=(
+        "Führt HTTP Request aus (GET/POST/PUT/DELETE/PATCH) gegen öffentliche "
+        "http(s)-Adressen. Gibt Status, Response-Body und Zeit zurück. Interne "
+        "Adressen (localhost, LAN) sind gesperrt, Weiterleitungen werden nicht verfolgt."
+    ),
     schema={
         "type": "object",
         "properties": {
             "url": {
                 "type": "string",
-                "description": "URL für den Request",
+                "description": "URL für den Request (http/https, öffentlich)",
             },
             "method": {
                 "type": "string",
-                "enum": ["GET", "POST", "PUT", "DELETE", "PATCH"],
+                "enum": sorted(_METHODS),
                 "description": "HTTP Methode (default: GET)",
             },
             "headers": {
@@ -110,7 +109,7 @@ TOOL = Tool(
             },
             "timeout": {
                 "type": "integer",
-                "description": "Timeout in Sekunden (default: 10)",
+                "description": "Timeout in Sekunden (default: 10, max 60)",
             },
         },
         "required": ["url"],
