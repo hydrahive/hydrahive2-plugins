@@ -1,6 +1,13 @@
 """find — Findet Dateien nach Name-Pattern."""
 
-from hydrahive.tools._path import PathOutsideWorkspace, safe_path
+from hydrahive.tools._path import PathOutsideWorkspace
+try:  # Kern mit verknüpften Projekten: lesen auch dort (nur lesen)
+    from hydrahive.tools._path import read_path
+except ImportError:  # älterer Kern: nur der eigene Arbeitsordner
+    from hydrahive.tools._path import safe_path
+
+    def read_path(ctx, requested):
+        return safe_path(ctx.workspace, requested)
 from hydrahive.tools.base import Tool, ToolContext, ToolResult
 
 
@@ -17,7 +24,7 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
     
     try:
     
-        root = safe_path(ctx.workspace, path_arg)
+        root = read_path(ctx, path_arg)
     
     except PathOutsideWorkspace as e:
     
