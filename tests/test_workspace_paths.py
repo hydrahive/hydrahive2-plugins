@@ -82,3 +82,40 @@ def test_find_findet_datei_relativ(ws, monkeypatch):
     monkeypatch.chdir("/")
     res = _run("file_search/tools/find.py", {"name": "a.txt", "path": "sub"}, ws)
     assert res.success and "a.txt" in str(res.output)
+
+
+# Verknüpfte Projekte (Kern docs/specs/linked-projects.md): grep/find/tree lesen über read_path des Kerns –
+# also auch in Projekten, die der Kern für diesen Lauf freigibt. Ohne read_path (älterer Kern) wie bisher.
+SEARCH = [c for c in CASES if c[0].startswith("file_search/")]
+
+
+@pytest.fixture
+def other(tmp_path):
+    o = tmp_path / "anderes"
+    o.mkdir()
+    (o / "a.txt").write_text("hallo\n")
+    return o
+
+
+@pytest.mark.parametrize("rel,args", SEARCH)
+def test_suche_liest_wo_der_kern_es_erlaubt(rel, args, ws, other, monkeypatch):
+    import hydrahive.tools._path as core_path
+
+    def read_path(ctx, requested):
+        p = pathlib.Path(requested).resolve()
+        if p == other or other in p.parents:
+            return p
+        return core_path.safe_path(ctx.workspace, requested)
+    monkeypatch.setattr(core_path, "read_path", read_path, raising=False)
+    res = _run(rel, {**args, "path": str(other)}, ws)
+    assert res.success, res.error
+    assert "a.txt" in str(res.output) or "hallo" in str(res.output)
+    assert not _run(rel, {**args, "path": "/etc"}, ws).success
+
+
+@pytest.mark.parametrize("rel,args", SEARCH)
+def test_ohne_read_path_im_kern_nur_eigener_ordner(rel, args, ws, other, monkeypatch):
+    import hydrahive.tools._path as core_path
+    monkeypatch.delattr(core_path, "read_path", raising=False)
+    assert not _run(rel, {**args, "path": str(other)}, ws).success
+    assert _run(rel, {**args, "path": "sub"}, ws).success
