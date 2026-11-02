@@ -8,6 +8,8 @@ from datetime import datetime
 
 from hydrahive.tools.base import Tool, ToolContext, ToolResult
 
+from ._mmx import minimax_api_key, mmx_base_cmd, mmx_binary, missing_key_message
+
 logger = logging.getLogger(__name__)
 
 
@@ -17,12 +19,19 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
     if not prompt:
         return ToolResult.fail("prompt ist erforderlich")
 
+    if not mmx_binary():
+        return ToolResult.fail("mmx-CLI fehlt (npm install -g mmx-cli)")
+
+    api_key = minimax_api_key()
+    if not api_key:
+        return ToolResult.fail(missing_key_message())
+
     out_dir = ctx.workspace / "media" / "images"
     out_dir.mkdir(parents=True, exist_ok=True)
     prefix = f"img_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
     cmd = [
-        "mmx", "--output", "json", "--non-interactive",
+        *mmx_base_cmd(api_key), "--output", "json",
         "image", "generate",
         "--prompt", prompt,
         "--aspect-ratio", aspect,
