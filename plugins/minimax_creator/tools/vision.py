@@ -4,15 +4,24 @@ import json
 
 from hydrahive.tools.base import Tool, ToolContext, ToolResult
 
+from ._mmx import minimax_api_key, mmx_base_cmd, mmx_binary, missing_key_message
+
 
 async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
     image = args.get("image", "")
     prompt = args.get("prompt", None)
-    
+
     if not image:
         return ToolResult.fail("image ist erforderlich (Pfad oder URL)")
-    
-    cmd = ["mmx", "vision", "describe", "--image", image]
+
+    if not mmx_binary():
+        return ToolResult.fail("mmx-CLI fehlt (npm install -g mmx-cli)")
+
+    api_key = minimax_api_key()
+    if not api_key:
+        return ToolResult.fail(missing_key_message())
+
+    cmd = [*mmx_base_cmd(api_key), "vision", "describe", "--image", image]
     if prompt:
         cmd.extend(["--prompt", prompt])
     

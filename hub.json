@@ -1,91 +1,91 @@
 {
-  "schema_version": 1,
-  "updated": "2026-04-29",
-  "plugins": [
-    {
-      "name": "hello-world",
-      "version": "0.1.0",
-      "description": "Demo-Plugin: ein einfaches Echo-Tool als Referenz für Plugin-Autoren.",
-      "author": "HydraHive",
-      "path": "plugins/hello-world",
-      "requires_core": ">=2.0.0",
-      "tags": [
-        "demo",
-        "reference"
-      ]
-    },
-    {
-      "name": "git-stats",
-      "version": "0.1.1",
-      "description": "Git-Analytics: Commits, Authors, Files, Diff",
-      "author": "HydraHive Agent (Till)",
-      "path": "plugins/git_stats",
-      "requires_core": ">=2.0.0",
-      "tags": [
-        "git",
-        "analytics",
-        "vcs"
-      ]
-    },
-    {
-      "name": "code-metrics",
-      "version": "0.1.1",
-      "description": "Code-Analyse: Lines of Code, Sprachen, Complexity",
-      "author": "HydraHive Agent (Till)",
-      "path": "plugins/code_metrics",
-      "requires_core": ">=2.0.0",
-      "tags": [
-        "code",
-        "metrics",
-        "analysis"
-      ]
-    },
-    {
-      "name": "file-search",
-      "version": "0.2.0",
-      "description": "Erweiterte Suche: grep, find, tree",
-      "author": "HydraHive Agent (Till)",
-      "path": "plugins/file_search",
-      "requires_core": ">=2.0.0",
-      "tags": [
-        "search",
-        "grep",
-        "files",
-        "navigation"
-      ]
-    },
-    {
-      "name": "http-tester",
-      "version": "0.1.1",
-      "description": "API-Tests: HTTP Requests, JSON Vergleiche, Schema-Validierung",
-      "author": "HydraHive Agent (Till)",
-      "path": "plugins/http_tester",
-      "requires_core": ">=2.0.0",
-      "tags": [
-        "http",
-        "api",
-        "testing",
-        "json"
-      ]
-    },
-    {
-      "name": "minimax-creator",
-      "version": "0.1.0",
-      "description": "MiniMax AI Creator (NUR für MiniMax-Agenten): Bilder, Musik, Video, Speech, Vision",
-      "author": "HydraHive Agent (Till)",
-      "path": "plugins/minimax_creator",
-      "requires_core": ">=2.0.0",
-      "tags": [
-        "minimax",
-        "ai",
-        "creator",
-        "image",
-        "music",
-        "video",
-        "speech"
-      ],
-      "requires_mmx": true,
-      "note": "NUR für MiniMax-Agenten mit mmx CLI"
-    }
-  ]
+ "schema_version": 1,
+ "updated": "2026-11-02",
+ "plugins": [
+  {
+   "name": "hello-world",
+   "version": "0.1.0",
+   "description": "Demo-Plugin: ein einfaches Echo-Tool als Referenz für Plugin-Autoren.",
+   "author": "HydraHive",
+   "path": "plugins/hello-world",
+   "requires_core": ">=2.0.0",
+   "tags": [
+    "demo",
+    "reference"
+   ]
+  },
+  {
+   "name": "git-stats",
+   "version": "0.1.1",
+   "description": "Git-Analytics: Commits, Authors, Files, Diff",
+   "author": "HydraHive Agent (Till)",
+   "path": "plugins/git_stats",
+   "requires_core": ">=2.0.0",
+   "tags": [
+    "git",
+    "analytics",
+    "vcs"
+   ]
+  },
+  {
+   "name": "code-metrics",
+   "version": "0.1.1",
+   "description": "Code-Analyse: Lines of Code, Sprachen, Complexity",
+   "author": "HydraHive Agent (Till)",
+   "path": "plugins/code_metrics",
+   "requires_core": ">=2.0.0",
+   "tags": [
+    "code",
+    "metrics",
+    "analysis"
+   ]
+  },
+  {
+   "name": "file-search",
+   "version": "0.2.0",
+   "description": "Erweiterte Suche: grep, find, tree",
+   "author": "HydraHive Agent (Till)",
+   "path": "plugins/file_search",
+   "requires_core": ">=2.0.0",
+   "tags": [
+    "search",
+    "grep",
+    "files",
+    "navigation"
+   ]
+  },
+  {
+   "name": "http-tester",
+   "version": "0.1.1",
+   "description": "API-Tests: HTTP Requests, JSON Vergleiche, Schema-Validierung",
+   "author": "HydraHive Agent (Till)",
+   "path": "plugins/http_tester",
+   "requires_core": ">=2.0.0",
+   "tags": [
+    "http",
+    "api",
+    "testing",
+    "json"
+   ]
+  },
+  {
+   "name": "minimax-creator",
+   "version": "0.2.0",
+   "description": "MiniMax AI Creator (NUR für MiniMax-Agenten): Bilder, Video, Speech, Vision",
+   "author": "HydraHive Agent (Till)",
+   "path": "plugins/minimax_creator",
+   "requires_core": ">=2.0.0",
+   "tags": [
+    "minimax",
+    "ai",
+    "creator",
+    "image",
+    "video",
+    "speech",
+    "vision"
+   ],
+   "requires_mmx": true,
+   "note": "NUR für MiniMax-Agenten mit mmx CLI. Der API-Key kommt aus der LLM-Konfiguration (Provider 'minimax')."
+  }
+ ]
 }

@@ -1,5 +1,5 @@
 name: minimax-creator
-version: 0.1.0
+version: 0.2.0
 description: MiniMax AI Creator Tools — Bilder, Musik, Videos, Speech, Vision (NUR für MiniMax-Agenten!)
 author: HydraHive Agent (Till)
 requires_core: ">=2.0.0"
@@ -13,7 +13,7 @@ tags:
   - video
   - speech
   - mmx
-note: "Dieses Plugin ist NUR für MiniMax-Agenten mit mmx CLI"
+note: "Dieses Plugin ist NUR für MiniMax-Agenten mit mmx CLI. Der API-Key kommt aus der LLM-Konfiguration (Provider 'minimax')."
 permissions:
   - tools.register
   - shell.mmx
