@@ -14,7 +14,15 @@ except ImportError:  # älterer Kern: nur der eigene Arbeitsordner
 from hydrahive.tools.base import Tool, ToolContext, ToolResult
 
 
-EXCLUDED_DIRS = {"node_modules", "__pycache__", "venv", ".venv", "node_modules"}
+EXCLUDED_DIRS = {"node_modules", "__pycache__", "venv", ".venv", "dist", "build", ".next"}
+
+# Hartes Sicherheitsnetz gegen Event-Loop-Blockaden (Vorfall 2026-11-19: ein
+# grep über einen großen Ordner ohne Limits hat read_text() synchron im
+# Event-Loop-Thread laufen lassen -> Discord-Heartbeat >590s blockiert ->
+# kompletter Server-Hänger, musste hart neu gestartet werden).
+MAX_FILE_BYTES = 2_000_000       # Dateien größer als 2 MB überspringen (Binaries/Logs)
+MAX_FILES_TO_SEARCH = 2_000      # Harte Obergrenze unabhängig vom max_results-Wert
+MAX_CONCURRENT_READS = 32        # Begrenzte Parallelität statt unbegrenztem gather()
 
 
 async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
@@ -56,6 +64,9 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
         if not any(part.startswith(".") or part in EXCLUDED_DIRS for part in rel_parts):
             filtered_files.append(f)
     files = list(set(filtered_files))  # Remove duplicates
+    files_total_found = len(files)
+    truncated_by_file_limit = files_total_found > MAX_FILES_TO_SEARCH
+    files = files[:MAX_FILES_TO_SEARCH]
     
     # Compile regex
     flags = 0 if case_sensitive else re.IGNORECASE
@@ -64,9 +75,14 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
     except Exception as e:
         return ToolResult.fail(f"Ungültiges Regex: {e}")
     
-    # Search in files
-    async def search_file(path: Path):
+    # Search in files. Das eigentliche Lesen+Durchsuchen ist blockierendes,
+    # synchrones IO/CPU-Code -> läuft über asyncio.to_thread in einem Worker-
+    # Thread, NIE direkt im Event-Loop-Thread. Sonst friert ein großer/teurer
+    # Aufruf den kompletten Server ein (Discord, API, alle Sessions).
+    def _search_file_sync(path: Path) -> dict:
         try:
+            if path.stat().st_size > MAX_FILE_BYTES:
+                return {"file": str(path), "matches": [], "skipped": "zu groß"}
             content = path.read_text(errors="ignore")
             lines = content.split("\n")
             matches = []
@@ -96,7 +112,13 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
             return {"file": str(path), "matches": matches}
         except Exception:
             return {"file": str(path), "matches": [], "error": True}
-    
+
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_READS)
+
+    async def search_file(path: Path) -> dict:
+        async with semaphore:
+            return await asyncio.to_thread(_search_file_sync, path)
+
     results = await asyncio.gather(*[search_file(f) for f in files])
     
     # Filter and aggregate
@@ -112,6 +134,8 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
         "pattern": pattern,
         "extensions": extensions or None,
         "files_searched": len(files),
+        "files_found_total": files_total_found,
+        "files_truncated": truncated_by_file_limit,
         "files_with_matches": len(files_with_matches),
         "total_matches": total_matches,
         "results_limited": total_matches >= max_results,
