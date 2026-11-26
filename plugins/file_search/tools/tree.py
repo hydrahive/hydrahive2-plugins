@@ -1,4 +1,6 @@
 """tree — Zeigt Verzeichnis-Struktur als Baum."""
+import asyncio
+import os
 from pathlib import Path
 
 from hydrahive.tools._path import PathOutsideWorkspace
@@ -10,6 +12,21 @@ except ImportError:  # älterer Kern: nur der eigene Arbeitsordner
     def read_path(ctx, requested):
         return safe_path(ctx.workspace, requested)
 from hydrahive.tools.base import Tool, ToolContext, ToolResult
+
+try:  # im Betrieb als Paket geladen (plugins/loader.py)
+    from file_search.tools import _walk
+except ModuleNotFoundError as _e:  # Tests laden die Datei einzeln – echte Fehler in _walk.py nicht verschlucken
+    if _e.name != "file_search":
+        raise
+    import importlib.util as _ilu
+    import pathlib as _pl
+    import sys as _sys
+    _walk = _sys.modules.get("file_search_walk")
+    if _walk is None:
+        _spec = _ilu.spec_from_file_location("file_search_walk", _pl.Path(__file__).with_name("_walk.py"))
+        _walk = _ilu.module_from_spec(_spec)
+        _sys.modules["file_search_walk"] = _walk      # dataclass braucht das Modul in sys.modules
+        _spec.loader.exec_module(_walk)
 
 
 EXCLUDED_DEFAULTS = {"node_modules", "__pycache__", ".git", ".venv", "venv", "dist", "build", "target", ".idea", ".vscode"}
@@ -36,6 +53,8 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
     if not root.exists():
         return ToolResult.fail(f"Pfad existiert nicht: {root}")
     
+    root_dev = root.stat().st_dev
+
     def build_tree(path: Path, prefix: str = "", depth: int = 0) -> list:
         """Rekursiv Verzeichnisbaum bauen."""
         if depth >= max_depth:
@@ -58,6 +77,13 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
                 continue
             
             if item.is_dir():
+                # Keine Symlink-Ordner, keine anderen Dateisysteme (Netzlaufwerke) – nur als Name zeigen.
+                try:
+                    if os.path.islink(item) or item.lstat().st_dev != root_dev:
+                        files.append(item) if show_files else None
+                        continue
+                except OSError:
+                    continue
                 dirs.append(item)
             elif show_files:
                 # Extension filter
@@ -78,34 +104,34 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
         for i, f in enumerate(files):
             is_last = i == len(files) - 1
             connector = "└── " if is_last else "├── "
-            size = f.stat().st_size
+            try:
+                if f.is_dir():
+                    lines.append(f"{prefix}{connector}{f.name}/ (Mount/Verweis, nicht betreten)")
+                    continue
+                size = f.stat().st_size
+            except OSError:
+                continue
             size_str = _format_size(size) if size < 1024*100 else f"({_format_size(size)})"
             lines.append(f"{prefix}{connector}{f.name} {size_str}")
         
         return lines
     
-    tree_lines = build_tree(root)
-    
-    # Stats
-    total_files = 0
-    total_dirs = 0
-    for item in root.rglob("*"):
-        if item.is_dir():
-            rel_parts = item.relative_to(root).parts
-            if not any(p.startswith(".") or p in EXCLUDED_DEFAULTS for p in rel_parts):
-                total_dirs += 1
-        elif item.is_file():
-            rel_parts = item.relative_to(root).parts
-            if not any(p.startswith(".") or p in EXCLUDED_DEFAULTS for p in rel_parts):
-                total_files += 1
-    
-    return ToolResult.ok({
+    # Baum und Zählung im Worker-Thread (vorher rglob über ALLES synchron im Event-Loop, auch Netzlaufwerke).
+    tree_lines = await asyncio.to_thread(build_tree, root)
+    walked = await asyncio.to_thread(_walk.walk, root, max_depth=50, extra_skip=exclude - _walk.SKIP_DIRS)
+
+    out = {
         "path": str(root),
         "max_depth": max_depth,
-        "total_files": total_files,
-        "total_dirs": total_dirs,
+        "total_files": len(walked.files),
+        "total_dirs": walked.dirs,
         "tree": "\n".join(tree_lines) if tree_lines else "(leer)",
-    })
+    }
+    if walked.stopped:
+        out["counts_incomplete"] = f"{walked.stopped} erreicht – Zählung unvollständig"
+    if walked.skipped_mounts or walked.skipped_links:
+        out["not_entered"] = (walked.skipped_mounts + walked.skipped_links)[:10]
+    return ToolResult.ok(out)
 
 
 def _format_size(size: int) -> str:
@@ -119,7 +145,8 @@ def _format_size(size: int) -> str:
 
 TOOL = Tool(
     name="tree",
-    description="Zeigt Verzeichnis-Struktur als Baum mit Größen.",
+    description=("Zeigt Verzeichnis-Struktur als Baum mit Größen. Netzlaufwerke und verlinkte Ordner nur als Name – "
+                 "verknüpfte Projekte direkt anzeigen: path=\"linked/<Name>\"."),
     schema={
         "type": "object",
         "properties": {
