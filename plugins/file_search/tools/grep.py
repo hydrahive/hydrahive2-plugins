@@ -15,7 +15,9 @@ from hydrahive.tools.base import Tool, ToolContext, ToolResult
 
 try:  # im Betrieb als Paket geladen (plugins/loader.py)
     from file_search.tools import _walk
-except ImportError:  # Tests laden die Datei einzeln
+except ModuleNotFoundError as _e:  # Tests laden die Datei einzeln – echte Fehler in _walk.py nicht verschlucken
+    if _e.name != "file_search":
+        raise
     import importlib.util as _ilu
     import pathlib as _pl
     import sys as _sys
@@ -142,12 +144,14 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
         "matches": files_with_matches[:20],  # Top 20 files
         **({"stopped": f"{walked.stopped} erreicht – nicht alle Dateien durchsucht"} if walked.stopped else {}),
         **({"skipped_mounts": walked.skipped_mounts[:10]} if walked.skipped_mounts else {}),
+        **({"skipped_links": walked.skipped_links[:10]} if walked.skipped_links else {}),
     })
 
 
 TOOL = Tool(
     name="grep",
-    description="Durchsucht Dateien nach Regex-Pattern. Gibt Datei, Zeile und Content zurück.",
+    description=("Durchsucht Dateien nach Regex-Pattern. Gibt Datei, Zeile und Content zurück. Versteckte Dateien, "
+                 "Netzlaufwerke und verlinkte Ordner werden ausgelassen – verknüpfte Projekte: path=\"linked/<Name>\"."),
     schema={
         "type": "object",
         "properties": {

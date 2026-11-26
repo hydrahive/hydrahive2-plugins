@@ -15,7 +15,9 @@ from hydrahive.tools.base import Tool, ToolContext, ToolResult
 
 try:  # im Betrieb als Paket geladen (plugins/loader.py)
     from file_search.tools import _walk
-except ImportError:  # Tests laden die Datei einzeln
+except ModuleNotFoundError as _e:  # Tests laden die Datei einzeln – echte Fehler in _walk.py nicht verschlucken
+    if _e.name != "file_search":
+        raise
     import importlib.util as _ilu
     import pathlib as _pl
     import sys as _sys
@@ -127,6 +129,8 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
     }
     if walked.stopped:
         out["counts_incomplete"] = f"{walked.stopped} erreicht – Zählung unvollständig"
+    if walked.skipped_mounts or walked.skipped_links:
+        out["not_entered"] = (walked.skipped_mounts + walked.skipped_links)[:10]
     return ToolResult.ok(out)
 
 
@@ -141,7 +145,8 @@ def _format_size(size: int) -> str:
 
 TOOL = Tool(
     name="tree",
-    description="Zeigt Verzeichnis-Struktur als Baum mit Größen.",
+    description=("Zeigt Verzeichnis-Struktur als Baum mit Größen. Netzlaufwerke und verlinkte Ordner nur als Name – "
+                 "verknüpfte Projekte direkt anzeigen: path=\"linked/<Name>\"."),
     schema={
         "type": "object",
         "properties": {

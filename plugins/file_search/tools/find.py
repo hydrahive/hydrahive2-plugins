@@ -14,7 +14,9 @@ from hydrahive.tools.base import Tool, ToolContext, ToolResult
 
 try:  # im Betrieb als Paket geladen (plugins/loader.py)
     from file_search.tools import _walk
-except ImportError:  # Tests laden die Datei einzeln
+except ModuleNotFoundError as _e:  # Tests laden die Datei einzeln – echte Fehler in _walk.py nicht verschlucken
+    if _e.name != "file_search":
+        raise
     import importlib.util as _ilu
     import pathlib as _pl
     import sys as _sys
@@ -97,6 +99,8 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
         out["stopped"] = f"{walked.stopped} erreicht – Ergebnis unvollständig, Pfad/max_depth enger fassen"
     if walked.skipped_mounts:
         out["skipped_mounts"] = walked.skipped_mounts[:10]
+    if walked.skipped_links:
+        out["skipped_links"] = walked.skipped_links[:10]
     return ToolResult.ok(out)
 
 
@@ -108,7 +112,8 @@ def _match_glob(filename: str, pattern: str) -> bool:
 
 TOOL = Tool(
     name="find",
-    description="Findet Dateien nach Name oder Pattern.",
+    description=("Findet Dateien nach Name oder Pattern. Netzlaufwerke und verlinkte Ordner werden nicht betreten "
+                 "(skipped_mounts/skipped_links) – verknüpfte Projekte direkt suchen: path=\"linked/<Name>\"."),
     schema={
         "type": "object",
         "properties": {

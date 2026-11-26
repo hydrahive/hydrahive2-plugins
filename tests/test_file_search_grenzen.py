@@ -171,3 +171,68 @@ def test_find_blockiert_den_event_loop_nicht(tmp_path):
     gaps, dauer = asyncio.run(run())
     assert dauer > 0.05, "Testbaum zu klein, um ein Blockieren zu messen"
     assert max(gaps) < dauer * 0.6, f"Event-Loop {max(gaps):.3f}s blockiert bei {dauer:.3f}s Laufzeit"
+
+
+# --- Review #7 ---------------------------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("ort", ["", "src/"])
+def test_versteckte_dateien_werden_nicht_durchsucht(ws, ort):
+    """Fängt (Review #7, muss): 0.4.0-Entwurf sortierte nur versteckte ORDNER aus – grep gab .env-Zeilen zurück."""
+    (ws / f"{ort}.env").write_text("ZIEL_GEHEIM=hunter2\n")
+    (ws / f"{ort}.versteckt.py").write_text("ZIEL\n")
+    grep = _run("grep", {"pattern": "ZIEL"}, ws).output
+    assert "hunter2" not in str(grep)
+    assert not any(pathlib.Path(m["file"]).name.startswith(".") for m in grep["matches"])
+    names = {r["name"] for r in _run("find", {"name": "versteckt"}, ws).output["results"]}
+    assert names == set()
+    assert _run("tree", {}, ws).output["total_files"] == 3      # ziel.py, ziel_tief.py, readme.md
+
+
+def test_tree_zeigt_gitignore_und_env_weiter_als_namen(ws):
+    (ws / ".env").write_text("GEHEIM=1\n")
+    tree = _run("tree", {}, ws).output["tree"]
+    assert ".env" in tree and "GEHEIM" not in tree
+
+
+def test_symlink_als_wurzel_wird_durchsucht(ws, tmp_path, monkeypatch):
+    """Verknüpfte Projekte liegen als Verweis im Arbeitsordner – als path angegeben muss die Suche hinein.
+    Die Freigabe macht der Kern (read_path); hier wie in test_workspace_paths nachgebildet."""
+    import hydrahive.tools._path as core_path
+    fremd = tmp_path / "projekt_b"
+    (fremd / "lib").mkdir(parents=True)
+    (fremd / "lib" / "ziel_b.py").write_text("ZIEL\n")
+    os.symlink(fremd, ws / "linked_b")
+
+    def read_path(ctx, requested):
+        p = (ctx.workspace / requested) if not pathlib.Path(requested).is_absolute() else pathlib.Path(requested)
+        if p.resolve() == fremd.resolve():
+            return p                                   # Wurzel ist der Verweis selbst
+        return core_path.safe_path(ctx.workspace, requested)
+    monkeypatch.setattr(core_path, "read_path", read_path, raising=False)
+    out = _run("find", {"name": "ziel"}, ws).output
+    assert "ziel_b.py" not in {r["name"] for r in out["results"]}
+    assert out["skipped_links"] == ["linked_b"]
+    names = {r["name"] for r in _run("find", {"name": "ziel", "path": "linked_b"}, ws).output["results"]}
+    assert names == {"ziel_b.py"}
+    grep = _run("grep", {"pattern": "ZIEL", "path": "linked_b"}, ws).output
+    assert grep["files_with_matches"] == 1
+    tree = _run("tree", {"path": "linked_b"}, ws).output
+    assert "ziel_b.py" in tree["tree"] and tree["total_files"] == 1
+    assert "linked_b" in _run("tree", {}, ws).output["not_entered"]
+
+
+def test_grenze_greift_auch_in_einem_einzigen_grossen_ordner(tmp_path):
+    """Fängt (Review #7, kann): Grenzen wurden nur je Ordner geprüft – ein Ordner mit sehr vielen Dateien lief durch."""
+    w = tmp_path / "flach"
+    w.mkdir()
+    for i in range(5000):
+        (w / f"f{i}.txt").touch()
+    res = _mod("find")._walk.walk(w, max_entries=1000)
+    assert res.stopped == "Eintragsgrenze" and len(res.files) < 5000
+
+
+def test_echter_importfehler_in_walk_wird_nicht_verschluckt():
+    """Fängt (Review #7, kann): breites except ImportError wich bei einem echten Fehler still auf den Datei-Weg aus."""
+    for name in ("find", "grep", "tree"):
+        code = (TOOLS / f"{name}.py").read_text()
+        assert "except ModuleNotFoundError as _e:" in code and '_e.name != "file_search"' in code
