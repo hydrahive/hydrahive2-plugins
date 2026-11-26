@@ -8,7 +8,22 @@ except ImportError:  # älterer Kern: nur der eigene Arbeitsordner
 
     def read_path(ctx, requested):
         return safe_path(ctx.workspace, requested)
+import asyncio
+
 from hydrahive.tools.base import Tool, ToolContext, ToolResult
+
+try:  # im Betrieb als Paket geladen (plugins/loader.py)
+    from file_search.tools import _walk
+except ImportError:  # Tests laden die Datei einzeln
+    import importlib.util as _ilu
+    import pathlib as _pl
+    import sys as _sys
+    _walk = _sys.modules.get("file_search_walk")
+    if _walk is None:
+        _spec = _ilu.spec_from_file_location("file_search_walk", _pl.Path(__file__).with_name("_walk.py"))
+        _walk = _ilu.module_from_spec(_spec)
+        _sys.modules["file_search_walk"] = _walk      # dataclass braucht das Modul in sys.modules
+        _spec.loader.exec_module(_walk)
 
 
 async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
@@ -32,54 +47,32 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
     if not root.exists():
         return ToolResult.fail(f"Pfad existiert nicht: {root}")
     
-    # Build search term
     search_term = name or pattern
-    
-    try:
-        all_files = list(root.rglob("*"))
-    except Exception as e:
-        return ToolResult.fail(f"Glob-Fehler: {e}")
-    
-    # Filter
-    results = []
-    for f in all_files:
-        if not f.is_file():
-            continue
-        
-        # Check depth
-        try:
-            rel = f.relative_to(root)
-            if len(rel.parts) > max_depth:
-                continue
-        except ValueError:
-            continue
-        
-        # Skip hidden/binary dirs
-        if any(part.startswith(".") or part in {
-            "node_modules", "__pycache__", "venv", ".venv", "dist", "build", "target"
-        } for part in rel.parts):
-            continue
-        
-        # Match
+    exts = {f".{e.strip('.')}" for e in extensions} if extensions else None
+
+    def keep(f) -> bool:
         filename = f.name.lower()
-        if name.lower() in filename or (pattern and _match_glob(filename, pattern.lower())):
-            
-            # Extension filter
-            if extensions and f.suffix not in [f".{e.strip('.')}" for e in extensions]:
-                continue
-            
-            try:
-                stat = f.stat()
-                results.append({
-                    "path": str(rel),
-                    "name": f.name,
-                    "extension": f.suffix,
-                    "size": stat.st_size,
-                    "modified": stat.st_mtime,
-                })
-            except Exception:
-                pass
-    
+        if not (name.lower() in filename if name else False) and not (pattern and _match_glob(filename, pattern.lower())):
+            return False
+        return exts is None or f.suffix in exts
+
+    # Begrenzter Lauf im Worker-Thread (_walk.py): keine Mounts/Symlink-Ordner, Zeit- und Eintragsgrenze.
+    walked = await asyncio.to_thread(_walk.walk, root, max_depth=max_depth, keep=keep)
+
+    results = []
+    for f in walked.files:
+        try:
+            stat = f.stat()
+            results.append({
+                "path": str(f.relative_to(root)),
+                "name": f.name,
+                "extension": f.suffix,
+                "size": stat.st_size,
+                "modified": stat.st_mtime,
+            })
+        except Exception:
+            pass
+
     # Sort
     if sort_by == "name":
         results.sort(key=lambda x: x["name"])
@@ -90,15 +83,21 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
     
     # Limit
     limit = int(args.get("limit", 50))
+    total_found = len(results)
     results = results[:limit]
-    
-    return ToolResult.ok({
+
+    out = {
         "path": str(root),
         "search": search_term,
-        "total_found": len(results),
+        "total_found": total_found,
         "shown": len(results),
         "results": results,
-    })
+    }
+    if walked.stopped:
+        out["stopped"] = f"{walked.stopped} erreicht – Ergebnis unvollständig, Pfad/max_depth enger fassen"
+    if walked.skipped_mounts:
+        out["skipped_mounts"] = walked.skipped_mounts[:10]
+    return ToolResult.ok(out)
 
 
 def _match_glob(filename: str, pattern: str) -> bool:

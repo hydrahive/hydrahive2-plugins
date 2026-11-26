@@ -13,8 +13,20 @@ except ImportError:  # älterer Kern: nur der eigene Arbeitsordner
         return safe_path(ctx.workspace, requested)
 from hydrahive.tools.base import Tool, ToolContext, ToolResult
 
+try:  # im Betrieb als Paket geladen (plugins/loader.py)
+    from file_search.tools import _walk
+except ImportError:  # Tests laden die Datei einzeln
+    import importlib.util as _ilu
+    import pathlib as _pl
+    import sys as _sys
+    _walk = _sys.modules.get("file_search_walk")
+    if _walk is None:
+        _spec = _ilu.spec_from_file_location("file_search_walk", _pl.Path(__file__).with_name("_walk.py"))
+        _walk = _ilu.module_from_spec(_spec)
+        _sys.modules["file_search_walk"] = _walk      # dataclass braucht das Modul in sys.modules
+        _spec.loader.exec_module(_walk)
 
-EXCLUDED_DIRS = {"node_modules", "__pycache__", "venv", ".venv", "dist", "build", ".next"}
+
 
 # Hartes Sicherheitsnetz gegen Event-Loop-Blockaden (Vorfall 2026-11-19: ein
 # grep über einen großen Ordner ohne Limits hat read_text() synchron im
@@ -46,28 +58,16 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
     if not root.exists():
         return ToolResult.fail(f"Pfad existiert nicht: {root}")
     
-    # Find files - handle extensions properly
-    files = []
-    if extensions:
-        for ext in extensions:
-            ext_clean = ext.strip(".")
-            files.extend(root.glob(f"**/*.{ext_clean}"))
-    else:
-        files.extend(root.glob("**/*"))
-    
-    # Filter hidden dirs and non-files
-    filtered_files = []
-    for f in files:
-        if not f.is_file():
-            continue
-        rel_parts = f.relative_to(root).parts
-        if not any(part.startswith(".") or part in EXCLUDED_DIRS for part in rel_parts):
-            filtered_files.append(f)
-    files = list(set(filtered_files))  # Remove duplicates
+    # Begrenzter Lauf im Worker-Thread (_walk.py): keine Mounts/Symlink-Ordner, Zeit- und Eintragsgrenze. Vorher
+    # root.glob("**/*") synchron im Event-Loop, auch durch .git/node_modules und Netzlaufwerke.
+    exts = {f".{e.strip('.')}" for e in extensions} if extensions else None
+    walked = await asyncio.to_thread(_walk.walk, root, max_depth=50,
+                                     keep=(lambda f: f.suffix in exts) if exts else None)
+    files = walked.files
     files_total_found = len(files)
     truncated_by_file_limit = files_total_found > MAX_FILES_TO_SEARCH
     files = files[:MAX_FILES_TO_SEARCH]
-    
+
     # Compile regex
     flags = 0 if case_sensitive else re.IGNORECASE
     try:
@@ -140,6 +140,8 @@ async def _execute(args: dict, ctx: ToolContext) -> ToolResult:
         "total_matches": total_matches,
         "results_limited": total_matches >= max_results,
         "matches": files_with_matches[:20],  # Top 20 files
+        **({"stopped": f"{walked.stopped} erreicht – nicht alle Dateien durchsucht"} if walked.stopped else {}),
+        **({"skipped_mounts": walked.skipped_mounts[:10]} if walked.skipped_mounts else {}),
     })
 
 
